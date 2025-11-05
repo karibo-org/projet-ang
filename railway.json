@@ -1,0 +1,7 @@
+{
+  "name": "projet-mvp",
+  "scripts": {
+    "start": "node server.js",
+    "build": "npm run build"
+  }
+}

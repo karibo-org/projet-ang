@@ -1,0 +1,9 @@
+version: "3.8"
+
+services:
+  web:
+    image: karibo01/projet-mvp:latest
+    ports:
+      - "8082:80"
+    restart: always
+

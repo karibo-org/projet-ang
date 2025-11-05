@@ -1,0 +1,119 @@
+name: CI/CD Full (self-hosted)
+
+on:
+  push:
+    branches: ["main"]
+
+env:
+  IMAGE_NAME: karibo01/projet-mvp
+
+jobs:
+  build-and-push:
+    name: Build, push image and deploy
+    runs-on: [self-hosted, linux, org-stagiaire]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: "Debug: show workspace"
+        run: |
+          echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
+          ls -la "$GITHUB_WORKSPACE" || true
+
+      - name: Build Docker image
+        run: |
+          set -euo pipefail
+          echo "Building Docker image..."
+          docker build -t "$IMAGE_NAME:latest" "$GITHUB_WORKSPACE"
+          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          docker tag "$IMAGE_NAME:latest" "$IMAGE_NAME:$SHORT_SHA"
+          echo "Built images: $IMAGE_NAME:latest and $IMAGE_NAME:$SHORT_SHA"
+
+      - name: Login to Docker Hub
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+
+      - name: Push images to Docker Hub
+        run: |
+          set -euo pipefail
+          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          docker push "$IMAGE_NAME:latest"
+          docker push "$IMAGE_NAME:$SHORT_SHA" || true
+
+      - name: Deploy to staging (copy workspace -> /home/deploy/app and restart)
+        run: |
+          set -euo pipefail
+          echo "Deploy to staging: rsync from $GITHUB_WORKSPACE to /home/deploy/app"
+
+          SRC="${GITHUB_WORKSPACE}/"
+          DST="/home/deploy/app"
+
+          echo "SRC=$SRC"
+          echo "DST=$DST"
+
+          # ensure destination exists
+          mkdir -p "$DST"
+
+          # Dry run first with the same options (no owner/group preservation)
+          rsync -rlnptD --delete "$SRC" "$DST/" || true
+          echo "Dry-run complete."
+
+          # Actual sync: use -rltpD (don't preserve owner/group)
+          # -r : recursive
+          # -l : copy symlinks as symlinks
+          # -p : preserve permissions
+          # -t : preserve modification times
+          # -D : preserve devices/specials
+          rsync -rlptD --delete "$SRC" "$DST/"
+
+          # make sure deploy owns the files (no-op if already)
+          chown -R deploy:deploy "$DST" || true
+
+          cd "$DST" || exit 1
+          /usr/bin/docker compose pull || true
+          /usr/bin/docker compose up -d --build --remove-orphans
+
+      - name: Smoke test staging
+        run: |
+          sleep 5
+          curl -fsS http://127.0.0.1:8084 || (echo "staging not reachable" && exit 1)
+
+      - name: Deploy to production (copy compose.yml and run)
+        run: |
+          set -euo pipefail
+          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+
+          # config
+          SSH_KEY="/home/deploy/.ssh/runner_to_prod"
+          REMOTE_USER="deploy"
+          REMOTE_HOST="100.112.134.63"
+          REMOTE_DIR="/home/deploy/app"
+          LOCAL_COMPOSE="$GITHUB_WORKSPACE/docker-compose.yml"
+
+          echo "Remote: ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}"
+          echo "Local compose: ${LOCAL_COMPOSE}"
+
+          if [ ! -f "${LOCAL_COMPOSE}" ]; then
+            echo "ERROR: ${LOCAL_COMPOSE} not found in workspace"
+            exit 2
+          fi
+
+          # ensure remote dir exists
+          ssh -o StrictHostKeyChecking=no -i "${SSH_KEY}" "${REMOTE_USER}@${REMOTE_HOST}" "mkdir -p ${REMOTE_DIR} && chown -R deploy:deploy ${REMOTE_DIR} || true"
+
+          echo "Copying docker-compose.yml to remote..."
+          scp -o StrictHostKeyChecking=no -i "${SSH_KEY}" "${LOCAL_COMPOSE}" "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/docker-compose.yml"
+
+          echo "Triggering remote docker compose (pull + up)..."
+          ssh -o StrictHostKeyChecking=no -i "${SSH_KEY}" "${REMOTE_USER}@${REMOTE_HOST}" \
+            "cd ${REMOTE_DIR} || (echo 'no dir' && exit 1); /usr/bin/docker compose pull || true; /usr/bin/docker compose up -d --build --remove-orphans; echo 'Deployed ${SHORT_SHA}'"
+
+      - name: Finish
+        run: echo "CI/CD job finished"

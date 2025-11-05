@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Page Web Complète</title>
+  <style>
+    /* CSS intégré */
+    body {
+      font-family: Arial, sans-serif;
+      background: #f0f0f5;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      color: #333;
+    }
+    h1 {
+      color: #005f73;
+    }
+    button {
+      background-color: #0a9396;
+      color: white;
+      border: none;
+      padding: 15px 30px;
+      font-size: 1.2rem;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+    button:hover {
+      background-color: #94d2bd;
+      color: #001219;
+    }
+    #message {
+      margin-top: 20px;
+      font-size: 1.1rem;
+      color: #ee6c4d;
+    }
+  </style>
+</head>
+<body>
+  <h1>Bienvenue sur ma page web</h1>
+  <button id="btn">Clique-moi !</button>
+  <div id="message"></div>
+
+  <script>
+    // JavaScript intégré
+    const btn = document.getElementById('btn');
+    const message = document.getElementById('message');
+
+    btn.addEventListener('click', () => {
+      message.textContent = 'Merci d\'avoir cliqué sur le bouton ! 🎉';
+    });
+  </script>
+</body>
+</html>

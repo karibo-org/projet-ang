@@ -1,0 +1,17 @@
+services:
+  - type: static
+    name: proj-frontend-projet-mvp
+    env: static
+    repo: https://github.com/karibo-org/projet-mvp
+    branch: main
+    buildCommand: "npm run build"
+    publishPath: "build"
+
+# Example backend service (uncomment and edit if needed)
+#  - type: web
+#    name: proj-backend-<repo-name>
+#    env: node
+#    repo: https://github.com/<ORG>/<REPO>
+#    branch: main
+#    buildCommand: "npm install && npm run build"
+#    startCommand: "node server.js"
